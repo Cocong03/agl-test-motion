@@ -26,7 +26,7 @@ function renderMap(svg, fromId, toId, { crop = false } = {}) {
   const projection = d3.geoNaturalEarth1().rotate([-mid[0], 0]);
   if (crop && route) {
     // Mobile: zoom to the route's surroundings instead of the whole world.
-    projection.fitExtent([[60, 60], [W - 60, H - 60]], { type: 'MultiPoint', coordinates: [...route.coordinates, d3.geoInterpolate(...route.coordinates)(0.5)] });
+    projection.fitExtent([[160, 70], [W - 160, H - 70]], { type: 'MultiPoint', coordinates: [...route.coordinates, d3.geoInterpolate(...route.coordinates)(0.5)] });
   } else {
     projection.fitExtent([[10, 10], [W - 10, H - 10]], { type: 'Sphere' });
   }
