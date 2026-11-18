@@ -20,6 +20,18 @@ export function routeFor(fromId, toId) {
   return { type: 'LineString', coordinates: [[a.lon, a.lat], [b.lon, b.lat]] };
 }
 
+// Haversine great-circle distance, rounded to 10 km (shown as "≈ 7,700 km").
+export function distanceKm(fromId, toId) {
+  if (!routeFor(fromId, toId)) return null;
+  const a = cityById(fromId), b = cityById(toId), rad = Math.PI / 180;
+  const h = Math.sin((b.lat - a.lat) * rad / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin((b.lon - a.lon) * rad / 2) ** 2;
+  return Math.round(2 * 6371 * Math.asin(Math.sqrt(h)) / 10) * 10;
+}
+
+export const formatCoord = (lat, lon) =>
+  `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? 'E' : 'W'}`;
+
 export function buildBrief({ origin, destination, mode, commodity, readyDate, company, details }) {
   const lines = [
     'AGL shipment brief',

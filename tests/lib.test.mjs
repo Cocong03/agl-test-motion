@@ -1,6 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CITIES, cityById, routeFor, buildBrief, mailtoHref } from '../lib.js';
+import { CITIES, cityById, routeFor, buildBrief, mailtoHref, distanceKm, formatCoord } from '../lib.js';
+
+test('distanceKm gives the great-circle distance, null for the same city', () => {
+  const d = distanceKm('seattle', 'tokyo');
+  assert.ok(d >= 7600 && d <= 7800, String(d));
+  assert.equal(d % 10, 0);
+  assert.equal(distanceKm('tokyo', 'tokyo'), null);
+});
+
+test('formatCoord renders hemispheres', () => {
+  assert.equal(formatCoord(47.61, -122.33), '47.61°N 122.33°W');
+  assert.equal(formatCoord(-1.29, 36.82), '1.29°S 36.82°E');
+});
 
 test('CITIES has 8 valid, uniquely-identified cities', () => {
   assert.equal(CITIES.length, 8);
