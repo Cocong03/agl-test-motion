@@ -16,6 +16,10 @@ async function main() {
   initHero(introDelay);
   initJourney();
   initReveals();
+  initExplorer();
+  initExpertise();
+  initCompany();
+  initEnquiry();
   ScrollTrigger.refresh();
 }
 
@@ -131,6 +135,67 @@ function initReveals() {
   ScrollTrigger.batch(items, {
     start: 'top 85%', once: true,
     onEnter: batch => gsap.fromTo(batch, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.8, stagger: 0.1, ease: 'power2.out' }),
+  });
+}
+
+const drawIn = (path, vars) => {
+  const len = path.getTotalLength();
+  return gsap.fromTo(path, { strokeDasharray: len, strokeDashoffset: len }, { strokeDashoffset: 0, ...vars });
+};
+
+function initExplorer() {
+  if (reduced) return;
+  window.addEventListener('agl:route', e => drawIn(e.detail.path, { duration: 1.2, ease: 'power2.inOut', overwrite: true }));
+  $('#route-form').addEventListener('change', e => {
+    if (e.target.name === 'mode') gsap.fromTo('[data-mode-glyph]', { opacity: 0, y: -6 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' });
+  });
+}
+
+function initExpertise() {
+  if (reduced) return;
+  const tl = gsap.timeline({ scrollTrigger: { trigger: '.services', start: 'top 75%', once: true } });
+  tl.from('.service-card', { opacity: 0, y: 40, duration: 0.9, stagger: 0.15, ease: 'power2.out' });
+  $$('.service-card').forEach((card, i) => {
+    const at = i * 0.15 + 0.2;
+    card.querySelectorAll('.service-icon path').forEach(p => tl.add(drawIn(p, { duration: 1, ease: 'power1.inOut' }), at));
+    const num = card.querySelector('.service-num');
+    const counter = { n: 0 };
+    const target = Number(num.textContent);
+    tl.to(counter, { n: target, duration: 0.8, ease: 'power1.out', onUpdate: () => { num.textContent = String(Math.round(counter.n)).padStart(2, '0'); } }, at);
+  });
+
+  gsap.fromTo('.marquee-track', { xPercent: 0 }, {
+    xPercent: () => (mobile.matches ? -25 : -50), ease: 'none',
+    scrollTrigger: { trigger: '.marquee', start: 'top bottom', end: 'bottom top', scrub: true, invalidateOnRefresh: true },
+  });
+}
+
+function initCompany() {
+  if (reduced) return;
+  const split = SplitText.create('.company-title', { type: 'words' });
+  gsap.from(split.words, {
+    opacity: 0, yPercent: 40, duration: 0.8, stagger: 0.04, ease: 'power2.out',
+    scrollTrigger: { trigger: '.company-title', start: 'top 80%', once: true },
+  });
+  if (!mobile.matches) {
+    gsap.fromTo('.company-copy', { yPercent: -10 }, {
+      yPercent: 10, ease: 'none',
+      scrollTrigger: { trigger: '.company', start: 'top bottom', end: 'bottom top', scrub: true },
+    });
+  }
+}
+
+function initEnquiry() {
+  const result = $('#brief-result');
+  // Registered after app.js's submit handler, so the result is already unhidden here.
+  $('#brief-form').addEventListener('submit', () => {
+    if (result.hidden) return;
+    gsap.fromTo(result, { opacity: 0, scale: reduced ? 1 : 0.96 }, { opacity: 1, scale: 1, duration: reduced ? 0.3 : 0.5, ease: 'power2.out' });
+  });
+  if (reduced) return;
+  gsap.from('#brief-form .field', {
+    opacity: 0, y: 20, duration: 0.7, stagger: 0.06, ease: 'power2.out',
+    scrollTrigger: { trigger: '#brief-form', start: 'top 80%', once: true },
   });
 }
 
