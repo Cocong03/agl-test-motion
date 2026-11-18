@@ -83,9 +83,11 @@ export function createGlobe(canvas, { land = null, reduced = false } = {}) {
     stop() { running = false; cancelAnimationFrame(raf); },
   };
 
+  const touch = matchMedia('(pointer: coarse)').matches;
   function resize() {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    W = innerWidth; H = innerHeight;
+    const w = innerWidth, h = innerHeight, d = Math.min(2, window.devicePixelRatio || 1);
+    if (w === W && d === dpr && (h === H || (touch && Math.abs(h - H) < 140))) return; // mobile toolbar show/hide: keep the globe still
+    dpr = d; W = w; H = h;
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     draw();
   }

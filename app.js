@@ -15,6 +15,9 @@ const GUIDANCE = {
 
 let mode = 'air';
 let globe = null;
+const briefForm = $('#brief-form');
+let briefModeTouched = false; // once the visitor picks a brief mode themselves, the global switch stops overriding it
+briefForm.elements.mode.addEventListener('change', () => { briefModeTouched = true; });
 
 // --- Air / Ocean mode, shared by the nav switch and the explorer switch ---
 function setMode(next, { focus = false } = {}) {
@@ -34,7 +37,8 @@ function setMode(next, { focus = false } = {}) {
   setText($('[data-mode-glyph]'), GLYPH[mode]);
   setText($('#route-guidance'), GUIDANCE[mode]);
   setText($('[data-hud="mode"]'), MODE_LABEL[mode]);
-  if (globe) globe.mode = mode;
+  if (!briefModeTouched) briefForm.elements.mode.value = MODE_LABEL[mode];
+  if (globe) { globe.mode = mode; globe.render(); }
   if (changed) window.dispatchEvent(new CustomEvent('agl:mode', { detail: { mode } }));
 }
 for (const sw of $$('[data-mode-switch]')) {
@@ -70,13 +74,14 @@ function updateExplorer() {
     setText($('#route-coords'), '');
     setText($('#route-distance'), '—');
   }
+  // While the hero/journey story is on screen the globe keeps Seattle → Tokyo (motion.js sets globe.story).
+  if (globe && !globe.story) { globe.setRoute(from, to); globe.render(); }
   window.dispatchEvent(new CustomEvent('agl:route', { detail: { from, to, ok } }));
 }
 routeForm.addEventListener('change', updateExplorer);
 routeForm.addEventListener('submit', e => e.preventDefault());
 
 // --- Links that carry context into the enquiry form ---
-const briefForm = $('#brief-form');
 const MODE_OPTION = { air: 'Air freight', ocean: 'Ocean freight' };
 document.addEventListener('click', e => {
   const a = e.target.closest('a');

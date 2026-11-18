@@ -232,6 +232,9 @@ html.lenis, html.lenis body { height: auto; }
   .nav-pill { gap: 10px; padding-left: 16px; height: 56px; }
   .brand-name { display: none; }
   .monogram { border: 0; padding: 0; }
+  /* Text that passes over the globe without a glass panel keeps a soft scrim; lighter blur for phone GPUs. */
+  .section-intro p, .section-intro h2, .hero-foot, .hero-copy { text-shadow: 0 1px 14px var(--bg), 0 0 2px var(--bg); }
+  .glass { -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
   .mode-switch button { padding: 6px 11px; font-size: 12.5px; }
   .section { padding-block: 96px; }
   .section-intro, .bento, .form-grid, .route-fields { grid-template-columns: 1fr; }

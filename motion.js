@@ -10,6 +10,7 @@ let globe = window.aglGlobe || null;
 let lenis = null;
 let scene = 'home';
 let introDelay = 0;
+let journeyP = 0;
 
 const failOpen = () => html.classList.remove('motion-ready', 'motion-pending', 'intro-pending');
 
@@ -25,24 +26,29 @@ const SCENES = {
 
 async function main() {
   if (!window.gsap || !window.ScrollTrigger || !window.SplitText) { failOpen(); return; }
+  let ctx = null;
   try {
     gsap.registerPlugin(ScrollTrigger, SplitText);
     await document.fonts.ready; // SplitText must measure final fonts
     html.classList.add('motion-ready');
-    initGlobal();
-    introDelay = initIntro();
-    initHero();
-    initSplits();
-    initReveals();
-    initJourney();
-    initScenes();
-    initExplorer();
-    initExpertise();
-    initCompany();
-    initEnquiry();
+    // A context lets a failure revert every tween/split/trigger, so nothing stays hidden.
+    ctx = gsap.context(() => {
+      initGlobal();
+      introDelay = initIntro();
+      initJourney(); // pin first, so triggers below it measure with the pin spacing
+      initHero();
+      initSplits();
+      initReveals();
+      initScenes();
+      initExplorer();
+      initExpertise();
+      initCompany();
+      initEnquiry();
+    });
     html.classList.remove('motion-pending');
     ScrollTrigger.refresh();
   } catch (err) {
+    ctx?.revert();
     failOpen();
     console.error('Motion disabled:', err);
   }
@@ -118,7 +124,7 @@ function initHero() {
   if (reduced) { gsap.to('.hero .reveal', { opacity: 1, duration: 0.3 }); return; }
   const split = SplitText.create('.hero-title', { type: 'words', mask: 'words' });
   gsap.timeline({ delay: introDelay })
-    .from(split.words, { yPercent: 110, duration: 1.2, stagger: 0.07, ease: 'expo.out' })
+    .from(split.words, { yPercent: 110, duration: 1.2, stagger: 0.07, ease: 'expo.out', onComplete: () => split.revert() })
     .fromTo('.hero .reveal', { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.9, stagger: 0.1, ease: 'power3.out' }, '-=0.8');
   gsap.to('.hero-copy', {
     yPercent: -18, opacity: 0, ease: 'none',
@@ -131,7 +137,10 @@ function initSplits() {
   if (reduced) return;
   for (const h of $$('h2.split')) {
     const split = SplitText.create(h, { type: 'words', mask: 'words' });
-    gsap.from(split.words, { yPercent: 110, duration: 1, stagger: 0.05, ease: 'expo.out', scrollTrigger: { trigger: h, start: 'top 85%', once: true } });
+    gsap.from(split.words, {
+      yPercent: 110, duration: 1, stagger: 0.05, ease: 'expo.out', onComplete: () => split.revert(), // unmask so descenders never clip
+      scrollTrigger: { trigger: h, start: 'top 85%', once: true },
+    });
   }
 }
 
@@ -157,6 +166,11 @@ function sceneTarget(id) {
     Object.assign(s, { lon: f.lon, lat: f.lat, k: mobile.matches ? f.k * 0.85 : f.k });
   }
   if (id === 'home') Object.assign(s, { lon: globe.nearestLon(-150), lat: 28 });
+  if (id === 'journey') {
+    // Aim at where the vehicle is, so entering the pin (from either direction) doesn't snap.
+    const [lon, lat] = globe.pointAt(clamp(journeyP, 0.1, 0.9));
+    Object.assign(s, { lon: globe.nearestLon(lon), lat: clamp(lat - 24, -5, 35) });
+  }
   if (id !== 'journey' && id !== 'routes' && id !== 'home') Object.assign(s, { lat: 20 });
   return s;
 }
@@ -165,10 +179,11 @@ function goScene(id, { instant = false } = {}) {
   scene = id;
   if (!globe) return;
   const story = id === 'home' || id === 'journey';
+  globe.story = story; // app.js leaves the route alone while the Seattle → Tokyo story is on screen
   if (story) globe.setRoute('seattle', 'tokyo'); else globe.setRoute(...explorerIds());
   globe.loop = !reduced && id !== 'journey';
-  if (id !== 'journey') globe.progress = 1;
-  if (reduced && id !== 'journey') globe.vehicleT = 0.62;
+  if (id !== 'journey' || reduced) globe.progress = 1;
+  if (reduced) globe.vehicleT = 1;
   globe.camera.spin = !reduced && id === 'home';
   const target = sceneTarget(id);
   if (reduced || instant) { Object.assign(globe.camera, target); globe.render(); return; }
@@ -191,6 +206,8 @@ function initScenes() {
     gsap.to(globe.camera, { k: target.k, dim: target.dim, duration: 2.2, delay: introDelay, ease: 'expo.out' });
     goScene(scene, { instant: scene !== 'home' });
   };
+  // The globe may have become ready while we awaited fonts; app.js sets window.aglGlobe before dispatching.
+  globe = globe || window.aglGlobe || null;
   if (globe) onGlobe(globe);
   window.addEventListener('agl:globe-ready', e => onGlobe(e.detail.globe));
   mobile.addEventListener('change', () => goScene(scene));
@@ -215,17 +232,21 @@ function initJourney() {
   gsap.to(state, {
     p: 1, ease: 'none',
     onUpdate: () => {
+      journeyP = state.p;
       paint(state.p);
       if (!globe || scene !== 'journey') return;
       globe.progress = state.p;
       globe.vehicleT = state.p;
       const [lon, lat] = globe.pointAt(clamp(state.p, 0.1, 0.9));
+      gsap.killTweensOf(globe.camera, 'lon,lat'); // the scroll now drives the camera directly
       globe.camera.lon = globe.nearestLon(lon);
       globe.camera.lat = clamp(lat - 24, -5, 35); // view from the south so the raised arc bows upward
     },
     scrollTrigger: {
       trigger: '#journey', start: 'top top', pin: true, scrub: 0.8, invalidateOnRefresh: true,
       end: () => (mobile.matches ? '+=200%' : '+=300%'),
+      // The section's own scene trigger doesn't span the pin, so re-entering from below switches scene here.
+      onToggle: self => { if (self.isActive && scene !== 'journey') goScene('journey'); },
     },
   });
   // Entering the journey: start the drawn route from wherever the scroll is.
@@ -236,17 +257,16 @@ function initJourney() {
 
 // ---------- Explorer ----------
 function initExplorer() {
+  // app.js already applied the route/mode to the globe; this only adds the transitions.
   window.addEventListener('agl:route', e => {
-    if (!globe || !['routes', 'expertise', 'company', 'enquiry'].includes(scene)) return;
-    globe.setRoute(e.detail.from, e.detail.to);
-    if (!e.detail.ok) { globe.render(); return; }
+    if (!globe || globe.story || !e.detail.ok) return;
     if (reduced) { goScene(scene); return; }
     globe.vehicleT = 0;
     gsap.fromTo(globe, { progress: 0 }, { progress: 1, duration: 1.4, ease: 'power2.inOut', overwrite: true });
     if (scene === 'routes') gsap.to(globe.camera, { ...sceneTarget('routes'), duration: 1.4, ease: 'power3.inOut', overwrite: 'auto' });
   });
   window.addEventListener('agl:mode', () => {
-    if (reduced) { globe?.render(); return; }
+    if (reduced) return;
     gsap.fromTo('[data-mode-glyph]', { scale: 0.4, rotate: -30, opacity: 0 }, { scale: 1, rotate: 0, opacity: 1, duration: 0.6, ease: 'back.out(2)' });
     if (globe && scene !== 'journey') gsap.fromTo(globe, { progress: 0 }, { progress: 1, duration: 1.2, ease: 'power2.inOut', overwrite: true });
   });
