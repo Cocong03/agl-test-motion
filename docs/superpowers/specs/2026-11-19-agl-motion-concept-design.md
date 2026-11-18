@@ -64,7 +64,7 @@ City list (fixed, ~8): Seattle, Los Angeles, Miami, New York, Bogotá, Amsterdam
 
 ## Verification
 
-- Assert-based self-check in `app.js` (runs on `?selftest`): brief text contains all entered fields; great-circle path for Seattle → Tokyo has expected endpoints.
+- Pure logic lives in `lib.js` and is tested with `node --test`: brief text contains all entered fields; mailto encoding round-trips; Seattle → Tokyo route has expected endpoints; same-city route is rejected.
 - Headless browser: screenshots at 1440px and 390px for each section; zero console errors; one pass with reduced motion emulated.
 - Not verified: legacy browsers, low-end device performance.
 
