@@ -33,6 +33,12 @@ test('buildBrief includes every field and omits empty company', () => {
   assert.ok(buildBrief({ ...fields, company: 'Acme' }).includes('Company: Acme'));
 });
 
+test('buildBrief includes details and omits an empty ready date', () => {
+  const brief = buildBrief({ ...fields, readyDate: '', details: '12 pallets, 2–4°C' });
+  assert.ok(!brief.includes('Cargo-ready date:'));
+  assert.ok(brief.includes('Shipment details: 12 pallets, 2–4°C'));
+});
+
 test('mailtoHref round-trips special characters', () => {
   const brief = buildBrief({ ...fields, commodity: 'Fish & roe? #1\nCafé' });
   const href = mailtoHref(brief);

@@ -20,16 +20,17 @@ export function routeFor(fromId, toId) {
   return { type: 'LineString', coordinates: [[a.lon, a.lat], [b.lon, b.lat]] };
 }
 
-export function buildBrief({ origin, destination, mode, commodity, readyDate, company }) {
+export function buildBrief({ origin, destination, mode, commodity, readyDate, company, details }) {
   const lines = [
     'AGL shipment brief',
     `Origin: ${origin}`,
     `Destination: ${destination}`,
     `Transport mode: ${mode}`,
     `Commodity: ${commodity}`,
-    `Cargo-ready date: ${readyDate}`,
   ];
+  if (readyDate) lines.push(`Cargo-ready date: ${readyDate}`);
   if (company) lines.push(`Company: ${company}`);
+  if (details) lines.push(`Shipment details: ${details}`);
   return lines.join('\n');
 }
 
