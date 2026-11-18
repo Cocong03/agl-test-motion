@@ -1,106 +1,93 @@
-import { CITIES, cityById, routeFor, buildBrief, mailtoHref } from './lib.js';
+import { CITIES, cityById, routeFor, buildBrief, mailtoHref, distanceKm, formatCoord } from './lib.js';
+import { createGlobe } from './globe.js';
 
 const $ = sel => document.querySelector(sel);
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const W = 1000, H = 500;
-const mobile = matchMedia('(max-width: 760px)');
+const $$ = sel => [...document.querySelectorAll(sel)];
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; }; // avoid re-announcing live regions
 
-// Reuse an element inside svg (so motion.js references stay valid across re-renders), or create it.
-function el(svg, tag, cls) {
-  return svg.querySelector(`${tag}.${cls}`) || svg.appendChild(svgNode(tag, { class: cls }));
-}
-function svgNode(tag, attrs) {
-  const n = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-  return n;
-}
-
-let land = null;
-
-// Draws land, graticule, route and endpoint cities. The projection is centered on the route's
-// midpoint so a great-circle arc is never split at the map edge.
-function renderMap(svg, fromId, toId, { crop = false } = {}) {
-  const route = routeFor(fromId, toId);
-  const a = cityById(fromId), b = cityById(toId);
-  const mid = route ? d3.geoInterpolate(route.coordinates[0], route.coordinates[1])(0.5) : [0, 0];
-  const projection = d3.geoNaturalEarth1().rotate([-mid[0], 0]);
-  if (crop && route) {
-    // Mobile: zoom to the route's surroundings instead of the whole world.
-    projection.fitExtent([[160, 70], [W - 160, H - 70]], { type: 'MultiPoint', coordinates: [...route.coordinates, d3.geoInterpolate(...route.coordinates)(0.5)] });
-  } else {
-    projection.fitExtent([[10, 10], [W - 10, H - 10]], { type: 'Sphere' });
-  }
-  const path = d3.geoPath(projection);
-
-  el(svg, 'path', 'graticule').setAttribute('d', path(d3.geoGraticule10()));
-  if (land) el(svg, 'path', 'land').setAttribute('d', path(land));
-  const routePath = el(svg, 'path', 'route');
-  routePath.setAttribute('d', route ? path(route) : '');
-
-  svg.querySelectorAll('.city, .city-label').forEach(n => n.remove());
-  if (route) {
-    for (const c of [a, b]) {
-      const [x, y] = projection([c.lon, c.lat]);
-      svg.append(
-        svgNode('circle', { class: 'city', cx: x, cy: y, r: 3.5 }),
-        Object.assign(svgNode('text', { class: 'city-label', x, y: y - 14, 'text-anchor': 'middle' }), { textContent: c.name }),
-      );
-    }
-  }
-  return routePath;
-}
-
-// --- Journey (fixed Seattle → Tokyo) ---
-const journeySvg = $('#journey-map');
-function renderJourney() {
-  renderMap(journeySvg, 'seattle', 'tokyo', { crop: mobile.matches });
-  const marker = el(journeySvg, 'circle', 'marker');
-  marker.setAttribute('r', 6);
-  if (!marker.hasAttribute('cx')) {
-    const p = journeySvg.querySelector('.route').getPointAtLength(0);
-    marker.setAttribute('cx', p.x); marker.setAttribute('cy', p.y);
-  }
-}
-
-// --- Route explorer ---
-const routeForm = $('#route-form');
-const routeSvg = $('#route-map');
+const MODE_LABEL = { air: 'Air freight', ocean: 'Ocean freight' };
+const GLYPH = { air: '✈︎', ocean: '⛴︎' }; // ︎ keeps text (not emoji) presentation
 const GUIDANCE = {
   air: 'For time-sensitive cargo, share your ready date, dimensions, weight, and handling requirements.',
   ocean: 'Share your cargo-ready date, loading location, equipment needs and temperature requirements for a routing review.',
 };
-const GLYPH = { air: '✈︎', ocean: '⛴︎' }; // ︎ keeps text (not emoji) presentation
 
+let mode = 'air';
+let globe = null;
+
+// --- Air / Ocean mode, shared by the nav switch and the explorer switch ---
+function setMode(next, { focus = false } = {}) {
+  if (!MODE_LABEL[next]) return;
+  const changed = next !== mode;
+  mode = next;
+  for (const sw of $$('[data-mode-switch]')) {
+    sw.dataset.mode = mode;
+    for (const btn of sw.querySelectorAll('button[data-mode]')) {
+      const on = btn.dataset.mode === mode;
+      btn.setAttribute('aria-checked', on);
+      btn.tabIndex = on ? 0 : -1;
+      if (on && focus && sw.contains(document.activeElement)) btn.focus();
+    }
+  }
+  setText($('#route-mode'), MODE_LABEL[mode]);
+  setText($('[data-mode-glyph]'), GLYPH[mode]);
+  setText($('#route-guidance'), GUIDANCE[mode]);
+  setText($('[data-hud="mode"]'), MODE_LABEL[mode]);
+  if (globe) globe.mode = mode;
+  if (changed) window.dispatchEvent(new CustomEvent('agl:mode', { detail: { mode } }));
+}
+for (const sw of $$('[data-mode-switch]')) {
+  sw.addEventListener('click', e => { const b = e.target.closest('button[data-mode]'); if (b) setMode(b.dataset.mode); });
+  sw.addEventListener('keydown', e => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    setMode(mode === 'air' ? 'ocean' : 'air', { focus: true });
+  });
+}
+
+// --- Route explorer ---
+const routeForm = $('#route-form');
 for (const [name, initial] of [['origin', 'seattle'], ['destination', 'tokyo']]) {
-  const select = routeForm.elements[name];
-  select.append(...CITIES.map(c => new Option(c.name, c.id, false, c.id === initial)));
+  routeForm.elements[name].append(...CITIES.map(c => new Option(c.name, c.id, false, c.id === initial)));
 }
 
 function updateExplorer() {
-  const { origin, destination, mode } = routeForm.elements;
+  const from = routeForm.elements.origin.value, to = routeForm.elements.destination.value;
+  const ok = !!routeFor(from, to);
   const error = $('#route-error');
-  const path = renderMap(routeSvg, origin.value, destination.value, { crop: mobile.matches });
-  const ok = routeFor(origin.value, destination.value);
-  error.hidden = !!ok;
-  error.textContent = ok ? '' : 'Choose two different cities.';
-  if (ok) $('#route-cities').replaceChildren(
-    `${cityById(origin.value).name} `, Object.assign(document.createElement('span'), { textContent: '→' }), ` ${cityById(destination.value).name}`);
-  $('#route-mode').textContent = mode.selectedOptions[0].text;
-  $('#route-guidance').textContent = GUIDANCE[mode.value];
-  $('[data-mode-glyph]').textContent = GLYPH[mode.value];
-  if (ok) window.dispatchEvent(new CustomEvent('agl:route', { detail: { path } }));
+  error.hidden = ok;
+  setText(error, ok ? '' : 'Choose two different cities.');
+  const cities = $('#route-cities');
+  if (ok) {
+    const a = cityById(from), b = cityById(to);
+    const label = `${a.name} → ${b.name}`;
+    if (cities.textContent !== label) cities.replaceChildren(`${a.name} `, Object.assign(document.createElement('span'), { textContent: '→' }), ` ${b.name}`);
+    setText($('#route-coords'), `${formatCoord(a.lat, a.lon)} → ${formatCoord(b.lat, b.lon)}`);
+    setText($('#route-distance'), `≈ ${distanceKm(from, to).toLocaleString('en-US')} km`);
+  } else {
+    setText(cities, '—');
+    setText($('#route-coords'), '');
+    setText($('#route-distance'), '—');
+  }
+  window.dispatchEvent(new CustomEvent('agl:route', { detail: { from, to, ok } }));
 }
 routeForm.addEventListener('change', updateExplorer);
 routeForm.addEventListener('submit', e => e.preventDefault());
 
-// "Prepare a shipment brief" carries the explorer selection into the enquiry form.
+// --- Links that carry context into the enquiry form ---
 const briefForm = $('#brief-form');
-$('.route-card a[href="#enquiry"]').addEventListener('click', () => {
-  const { origin, destination, mode } = routeForm.elements;
-  if (!routeFor(origin.value, destination.value)) return;
-  briefForm.elements.origin.value = cityById(origin.value).name;
-  briefForm.elements.destination.value = cityById(destination.value).name;
-  briefForm.elements.mode.value = mode.selectedOptions[0].text;
+const MODE_OPTION = { air: 'Air freight', ocean: 'Ocean freight' };
+document.addEventListener('click', e => {
+  const a = e.target.closest('a');
+  if (!a) return;
+  if (a.matches('[data-prefill]') && routeFor(routeForm.elements.origin.value, routeForm.elements.destination.value)) {
+    briefForm.elements.origin.value = cityById(routeForm.elements.origin.value).name;
+    briefForm.elements.destination.value = cityById(routeForm.elements.destination.value).name;
+    briefForm.elements.mode.value = MODE_OPTION[mode];
+  }
+  if (a.dataset.setMode) { setMode(a.dataset.setMode); briefForm.elements.mode.value = MODE_OPTION[a.dataset.setMode]; }
+  if (a.dataset.commodity && !briefForm.elements.commodity.value) briefForm.elements.commodity.value = 'Perishables';
 });
 
 // --- Shipment brief (local only; nothing is sent) ---
@@ -110,17 +97,24 @@ let brief = '';
 
 briefForm.addEventListener('submit', e => {
   e.preventDefault();
-  brief = buildBrief(Object.fromEntries(new FormData(briefForm)));
+  const fields = Object.fromEntries(new FormData(briefForm));
+  brief = buildBrief(fields);
   preview.textContent = brief;
-  status.textContent = SENT_NOTE;
+  setText($('#brief-route'), `${fields.origin} → ${fields.destination}`);
   result.querySelector('.copy-fallback')?.remove();
   result.hidden = false;
+  // Set the status after the region is visible, and move focus, so screen readers announce the result.
+  status.textContent = '';
+  requestAnimationFrame(() => {
+    status.textContent = SENT_NOTE;
+    $('#brief-title').focus({ preventScroll: true });
+  });
 });
 
 result.addEventListener('click', async e => {
   const action = e.target.closest('[data-action]')?.dataset.action;
   if (action === 'download') {
-    const url = URL.createObjectURL(new Blob([brief], { type: 'text/plain' }));
+    const url = URL.createObjectURL(new Blob([brief], { type: 'text/plain;charset=utf-8' }));
     Object.assign(document.createElement('a'), { href: url, download: 'agl-shipment-brief.txt' }).click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } else if (action === 'copy') {
@@ -132,31 +126,41 @@ result.addEventListener('click', async e => {
       if (!ta) {
         ta = Object.assign(document.createElement('textarea'), { className: 'copy-fallback', readOnly: true, value: brief });
         ta.setAttribute('aria-label', 'Shipment brief text');
+        ta.setAttribute('data-lenis-prevent', '');
         preview.after(ta);
       }
       ta.focus(); ta.select();
-      status.textContent = 'Press Ctrl+C to copy.';
+      status.textContent = 'Text selected. Copy it with your device’s copy command.';
     }
   } else if (action === 'email') {
-    location.href = mailtoHref(brief);
+    const href = mailtoHref(brief);
+    if (href.length > 1800) {
+      status.textContent = 'This brief is too long for an email draft. Use Copy text instead.';
+      return;
+    }
+    location.href = href;
+    status.textContent = 'If no email app opened, use Copy text. ' + SENT_NOTE;
   }
 });
 
-// --- Boot ---
-renderJourney();
-updateExplorer();
-fetch('data/land.json')
-  .then(r => r.json())
-  .then(topo => {
+// --- Globe ---
+async function initGlobe() {
+  if (!window.d3 || !window.topojson) return; // explorer text still works without the globe
+  let land = null;
+  try {
+    const topo = await (await fetch('data/land.json')).json();
     land = topojson.feature(topo, topo.objects.land);
-    renderJourney();
-    updateExplorer();
-  })
-  .catch(err => console.warn('Map outline unavailable; routes still shown.', err))
-  .finally(() => window.dispatchEvent(new Event('agl:maps-ready')));
+  } catch (err) { console.warn('Land outline unavailable; globe shows routes only.', err); }
+  globe = createGlobe($('#globe'), { land, reduced });
+  globe.mode = mode;
+  globe.setRoute('seattle', 'tokyo');
+  if (matchMedia('(max-width: 760px)').matches) Object.assign(globe.camera, { x: 0.5, y: 0.74, k: 0.52 });
+  globe.start();
+  globe.render();
+  window.aglGlobe = globe;
+  window.dispatchEvent(new CustomEvent('agl:globe-ready', { detail: { globe } }));
+}
 
-mobile.addEventListener('change', () => {
-  renderJourney();
-  updateExplorer();
-  window.dispatchEvent(new Event('agl:maps-resized'));
-});
+setMode('air');
+updateExplorer();
+initGlobe();

@@ -25,7 +25,8 @@ This runs the route and brief logic tests in `lib.js` with `node --test`.
 | `index.html` | All markup and copy (copy taken verbatim from `reference/live-index.html`) |
 | `styles.css` | AGL brand tokens and layout |
 | `lib.js` | Pure logic: cities, routes, brief text, mailto link |
-| `app.js` | Draws the maps, route explorer, brief download/copy/email |
+| `globe.js` | Canvas globe: dotted land, routes, plane (air) or ship (ocean), camera |
+| `app.js` | Air/Ocean switch, route explorer, brief download/copy/email, starts the globe |
 | `motion.js` | All animation (GSAP 3.13, ScrollTrigger, SplitText, Lenis); respects reduced motion |
 | `data/land.json` | world-atlas 2.0.2 `land-110m` outline |
 | `assets/harbor.webp` | Harbor painting from the live site |
