@@ -12,7 +12,7 @@ const body = src.match(/<body>([\s\S]*?)<\/body>/)[1]
 
 const out = `${head.trim()}\n${body.trim()}\n`;
 assert.ok(out.startsWith('<meta') || out.startsWith('<title'), 'head content first');
-assert.ok(out.includes('<title>AGL Motion Concept</title>'));
+assert.ok(out.includes('<title>AGL Test Motion</title>'));
 assert.ok(!/<\/?(html|head|body)[\s>]/.test(out) && !out.includes('<!doctype'), 'no document skeleton');
 assert.ok(!out.includes('data-action="download"'), 'download button removed');
 assert.ok(out.includes('data-action="copy"'), 'copy button kept');

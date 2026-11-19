@@ -1,4 +1,4 @@
-# AGL Motion Concept — Design Spec
+# AGL Test Motion — Design Spec
 
 Date: 2026-11-19
 Status: approved in conversation, pending written-spec review
@@ -48,7 +48,7 @@ Journey pin shortened to ~2 viewports; map crops to the Pacific; magnetic hover 
 ## Files
 
 ```
-agl-motion-concept/
+agl-test-motion/
   index.html      semantic markup + all copy
   styles.css      brand tokens + layout
   motion.js       all GSAP/Lenis code, one init function per section, reduced-motion gate first
