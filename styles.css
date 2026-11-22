@@ -265,3 +265,6 @@ html.lenis, html.lenis body { height: auto; }
   .hud-dot, .scroll-cue i { animation: none; }
   .mode-thumb, .journey-step, .step-num { transition: none; }
 }
+/* Links to the companion Astrolabe concept */
+.nav-external { color: var(--brass-hi); }
+.route-actions { display: flex; flex-wrap: wrap; gap: 10px; }
